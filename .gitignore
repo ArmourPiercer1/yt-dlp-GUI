@@ -1,0 +1,6 @@
+yt-dlp.exe
+.venv/
+__pycache__/
+config/
+.github/
+.vscode/
