@@ -19,9 +19,9 @@ DEFAULT_COOKIE_FILE = "www.youtube.com_cookies.txt"
 LEGACY_COOKIE_FILES = ["www.youtube.com_cookies.txt", "youtube-cookies.txt", "cookies.txt"]
 
 # 默认保存路径
-save_path_default = "I:\\videos"
-save_path_compilation = "I:\\videos\\compilations\\Nuestra_Familia_Feliz"
-save_path = "E:\\Entertainment\\Videos\\Others\\PB\\Well_Sorted\\同一作者合集\\菲律宾系列"
+
+save_path_default=str(Path.home() / "Downloads")
+
 
 progress_re = re.compile(r"(\d{1,3}(?:\.\d+)?)%")
 playlist_progress_re = re.compile(r"Downloading (?:item|video)\s+(\d+)\s+of\s+(\d+)", re.IGNORECASE)
