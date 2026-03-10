@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 import os
 import json
+import ctypes
 from pathlib import Path
 from datetime import datetime
 import pandas.io.clipboard as cb
@@ -15,12 +16,253 @@ QUEUE_FILE = "download_queue.json"
 SETTINGS_FILE = "gui_settings.json"
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_DIR = SCRIPT_DIR / "config"
-DEFAULT_COOKIE_FILE = "www.youtube.com_cookies.txt"
-LEGACY_COOKIE_FILES = ["www.youtube.com_cookies.txt", "youtube-cookies.txt", "cookies.txt"]
+DEFAULT_COOKIE_FILE = ""
+LEGACY_COOKIE_FILES = []
+COOKIE_NOT_SET_SENTINEL = "__COOKIE_NOT_SET__"
+
+SUPPORTED_LANGUAGES = {"zh_cn", "en_us"}
+LANGUAGE_DISPLAY = {
+    "zh_cn": "简体中文",
+    "en_us": "English",
+}
+
+I18N = {
+    "zh_cn": {
+        "app_title": "yt-dlp 下载队列管理器",
+        "waiting": "等待中",
+        "idle_download": "当前无下载",
+        "ready": "就绪",
+        "downloading": "下载中...",
+        "done": "完成",
+        "queue_info": "队列信息",
+        "queue_count": "队列中的链接数:",
+        "download_status": "下载状态:",
+        "current_download": "当前下载:",
+        "list_progress": "列表总进度:",
+        "add_link": "添加链接",
+        "url": "URL:",
+        "add": "添加",
+        "from_clipboard": "从剪贴板",
+        "default_download_path": "默认下载路径:",
+        "choose_dir": "选择目录",
+        "save_default": "保存默认",
+        "cookie_file": "Cookie文件:",
+        "choose_cookie": "选择Cookie",
+        "language": "界面语言:",
+        "apply_language": "切换",
+        "queue_list": "下载队列 (每条自带操作按钮)",
+        "actions": "操作",
+        "refresh": "刷新列表",
+        "download_first": "下载第一个",
+        "download_all": "下载全部",
+        "stop_download": "停止下载",
+        "clear_queue": "清空队列",
+        "logs": "日志",
+        "link": "链接",
+        "save_path": "保存路径",
+        "action": "操作",
+        "default_prefix": "默认",
+        "cookie_not_set": "未指明cookie文件",
+        "warn": "警告",
+        "info": "提示",
+        "error": "错误",
+        "confirm": "确认",
+        "input_url_required": "请输入链接",
+        "clipboard_empty": "剪贴板为空",
+        "cannot_read_clipboard": "无法读取剪贴板: {error}",
+        "manage_queue_item": "管理队列项",
+        "link_label": "链接:",
+        "save_path_hint": "保存路径 (留空使用默认)",
+        "choose_save_location": "选择保存位置",
+        "save": "保存",
+        "delete_link": "删除该链接",
+        "close": "关闭",
+        "update_save_path_ok": "✓ 已更新保存路径: {path}",
+        "default_path_label": "默认路径",
+        "confirm_delete_link": "确定要删除该链接吗？",
+        "confirm_clear_queue": "确定要清空整个队列吗？",
+        "queue_cleared": "✓ 队列已清空",
+        "choose_cookie_title": "选择Cookie文件",
+        "cookie_copied": "✓ Cookie已复制到配置目录: {path}",
+        "cookie_using_existing": "✓ 使用配置目录中的Cookie: {path}",
+        "cannot_set_cookie": "无法设置Cookie文件: {error}",
+        "choose_default_download_dir": "选择默认下载目录",
+        "default_download_path_updated": "✓ 默认下载路径已更新: {path}",
+        "cannot_save_default_path": "无法保存默认路径: {error}",
+        "default_download_path_empty": "默认下载路径不能为空",
+        "cannot_set_default_path": "无法设置默认路径: {error}",
+        "cookie_missing_skip": "⚠ Cookie文件不存在，跳过cookies参数: {path}",
+        "cookie_not_set_skip": "ℹ 未指明Cookie文件，按无Cookie模式继续",
+        "yt_dlp_not_found": "❌ 未找到 yt-dlp，请确认已安装",
+        "download_failed_title": "下载失败",
+        "download_failed_debug_retry": "下载失败，是否进行一次 debugging 下载？\n将自动添加 -v 以输出详细错误信息。",
+        "preparing": "准备中",
+        "detecting": "识别中",
+        "download_failed": "❌ 下载失败",
+        "debug_retry_start": "▶ 开始 debugging 下载（-v）",
+        "debug_retrying": "调试重试中",
+        "failed": "失败",
+        "busy_downloading": "正在下载中，请稍候",
+        "queue_empty_no_download": "队列为空，没有链接可下载",
+        "download_complete_removed": "✓ 下载完成，已从队列中移除",
+        "download_failed_keep": "❌ 下载失败，链接保留在队列中",
+        "confirm_download_all": "确定要下载队列中的全部 {count} 个链接吗？",
+        "download_failed_stop_queue": "❌ 下载失败，已停止队列下载",
+        "all_downloads_done": "\n✓ 所有链接下载完毕！",
+        "confirm_stop_download": "确定要停止下载吗？",
+        "download_stopped": "\n⚠ 下载已停止",
+        "queue_refreshed": "✓ 队列已刷新，共 {count} 个链接",
+        "language_switched": "✓ 界面语言已切换为: {language}",
+        "queue_msg_empty_link": "链接为空",
+        "queue_msg_exists": "链接已存在: {value}",
+        "queue_msg_added": "已添加: {value}",
+        "queue_msg_removed": "已移除: {value}",
+        "queue_msg_invalid_index": "无效的索引",
+        "queue_msg_save_path_updated": "保存路径已更新",
+    },
+    "en_us": {
+        "app_title": "yt-dlp Download Queue Manager",
+        "waiting": "Waiting",
+        "idle_download": "No active download",
+        "ready": "Ready",
+        "downloading": "Downloading...",
+        "done": "Done",
+        "queue_info": "Queue Info",
+        "queue_count": "Queued Links:",
+        "download_status": "Status:",
+        "current_download": "Current:",
+        "list_progress": "Playlist Progress:",
+        "add_link": "Add Link",
+        "url": "URL:",
+        "add": "Add",
+        "from_clipboard": "From Clipboard",
+        "default_download_path": "Default Download Path:",
+        "choose_dir": "Choose Folder",
+        "save_default": "Save Default",
+        "cookie_file": "Cookie File:",
+        "choose_cookie": "Choose Cookie",
+        "language": "Language:",
+        "apply_language": "Apply",
+        "queue_list": "Download Queue (Per-item actions)",
+        "actions": "Actions",
+        "refresh": "Refresh",
+        "download_first": "Download First",
+        "download_all": "Download All",
+        "stop_download": "Stop",
+        "clear_queue": "Clear Queue",
+        "logs": "Logs",
+        "link": "Link",
+        "save_path": "Save Path",
+        "action": "Action",
+        "default_prefix": "Default",
+        "cookie_not_set": "Cookie file not specified",
+        "warn": "Warning",
+        "info": "Info",
+        "error": "Error",
+        "confirm": "Confirm",
+        "input_url_required": "Please enter a URL",
+        "clipboard_empty": "Clipboard is empty",
+        "cannot_read_clipboard": "Cannot read clipboard: {error}",
+        "manage_queue_item": "Manage Queue Item",
+        "link_label": "Link:",
+        "save_path_hint": "Save path (empty = use default)",
+        "choose_save_location": "Choose Save Folder",
+        "save": "Save",
+        "delete_link": "Delete Link",
+        "close": "Close",
+        "update_save_path_ok": "✓ Save path updated: {path}",
+        "default_path_label": "default path",
+        "confirm_delete_link": "Delete this link?",
+        "confirm_clear_queue": "Clear the whole queue?",
+        "queue_cleared": "✓ Queue cleared",
+        "choose_cookie_title": "Choose Cookie File",
+        "cookie_copied": "✓ Cookie copied to config folder: {path}",
+        "cookie_using_existing": "✓ Using cookie from config folder: {path}",
+        "cannot_set_cookie": "Cannot set cookie file: {error}",
+        "choose_default_download_dir": "Choose default download folder",
+        "default_download_path_updated": "✓ Default download path updated: {path}",
+        "cannot_save_default_path": "Cannot save default path: {error}",
+        "default_download_path_empty": "Default download path cannot be empty",
+        "cannot_set_default_path": "Cannot set default path: {error}",
+        "cookie_missing_skip": "⚠ Cookie file not found, skip cookies argument: {path}",
+        "cookie_not_set_skip": "ℹ No cookie file specified, continue without cookies",
+        "yt_dlp_not_found": "❌ yt-dlp not found. Please install it first",
+        "download_failed_title": "Download Failed",
+        "download_failed_debug_retry": "Download failed. Run one debug retry?\n-v will be added automatically for detailed logs.",
+        "preparing": "Preparing",
+        "detecting": "Detecting",
+        "download_failed": "❌ Download failed",
+        "debug_retry_start": "▶ Start debug retry (-v)",
+        "debug_retrying": "Retrying with debug",
+        "failed": "Failed",
+        "busy_downloading": "A download is already in progress",
+        "queue_empty_no_download": "Queue is empty, nothing to download",
+        "download_complete_removed": "✓ Download complete and removed from queue",
+        "download_failed_keep": "❌ Download failed, item remains in queue",
+        "confirm_download_all": "Download all {count} links in queue?",
+        "download_failed_stop_queue": "❌ Download failed, queue processing stopped",
+        "all_downloads_done": "\n✓ All downloads completed!",
+        "confirm_stop_download": "Stop current download?",
+        "download_stopped": "\n⚠ Download stopped",
+        "queue_refreshed": "✓ Queue refreshed, total {count} links",
+        "language_switched": "✓ UI language switched to: {language}",
+        "queue_msg_empty_link": "Link is empty",
+        "queue_msg_exists": "Link already exists: {value}",
+        "queue_msg_added": "Added: {value}",
+        "queue_msg_removed": "Removed: {value}",
+        "queue_msg_invalid_index": "Invalid index",
+        "queue_msg_save_path_updated": "Save path updated",
+    },
+}
 
 # 默认保存路径
+def get_system_downloads_path():
+    """获取系统当前 Downloads 目录，兼容用户在 Windows 属性中重定位后的路径。"""
+    if os.name != "nt":
+        return str(Path.home() / "Downloads")
 
-save_path_default=str(Path.home() / "Downloads")
+    # 优先读取 Windows Known Folder，能够跟随“位置”页签的实际重定向路径。
+    try:
+        class GUID(ctypes.Structure):
+            _fields_ = [
+                ("Data1", ctypes.c_uint32),
+                ("Data2", ctypes.c_uint16),
+                ("Data3", ctypes.c_uint16),
+                ("Data4", ctypes.c_ubyte * 8),
+            ]
+
+        def _guid_from_string(value):
+            import uuid
+
+            u = uuid.UUID(value)
+            data4 = (ctypes.c_ubyte * 8)(*u.bytes[8:])
+            return GUID(
+                (u.time_low & 0xFFFFFFFF),
+                (u.time_mid & 0xFFFF),
+                (u.time_hi_version & 0xFFFF),
+                data4,
+            )
+
+        path_ptr = ctypes.c_wchar_p()
+        shell32 = ctypes.windll.shell32
+        ole32 = ctypes.windll.ole32
+        downloads_guid = _guid_from_string("374DE290-123F-4565-9164-39C4925E467B")
+
+        hr = shell32.SHGetKnownFolderPath(
+            ctypes.byref(downloads_guid),
+            0,
+            None,
+            ctypes.byref(path_ptr),
+        )
+        if hr == 0 and path_ptr.value:
+            result = str(Path(path_ptr.value))
+            ole32.CoTaskMemFree(path_ptr)
+            return result
+    except Exception:
+        pass
+
+    # 兜底：读取用户目录下 Downloads。
+    return str(Path.home() / "Downloads")
 
 
 progress_re = re.compile(r"(\d{1,3}(?:\.\d+)?)%")
@@ -134,7 +376,8 @@ class DownloadQueue:
 class DownloadGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("yt-dlp 下载队列管理器")
+        self.language = self._load_language()
+        self.root.title(self.tr("app_title"))
         self.root.geometry("1000x780")
         self.root.resizable(True, True)
         self.root.configure(bg="#f0f0f0")
@@ -144,20 +387,105 @@ class DownloadGUI:
         self.current_download_thread = None
         self.current_process = None
         self.progress_var = tk.DoubleVar(value=0.0)
-        self.progress_text = tk.StringVar(value="等待中")
+        self.progress_text = tk.StringVar(value=self.tr("waiting"))
         self.list_progress_var = tk.DoubleVar(value=0.0)
-        self.list_progress_text = tk.StringVar(value="等待中")
-        self.current_url_var = tk.StringVar(value="当前无下载")
+        self.list_progress_text = tk.StringVar(value=self.tr("waiting"))
+        self.current_url_var = tk.StringVar(value=self.tr("idle_download"))
         self.default_save_path_var = tk.StringVar(value=self._load_default_save_path())
-        self.cookie_file_var = tk.StringVar(value=self._load_cookie_file())
+        self.cookie_file_var = tk.StringVar(value=self._normalize_cookie_display_text(self._load_cookie_file()))
+        self.language_display_var = tk.StringVar(value=LANGUAGE_DISPLAY.get(self.language, "简体中文"))
         self._playlist_detected = False
+        self.main_frame = None
 
         self.setup_ui()
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh_queue_display()
 
-    def setup_ui(self):
+    def tr(self, key, **kwargs):
+        table = I18N.get(self.language, I18N["zh_cn"])
+        fallback = I18N["zh_cn"].get(key, key)
+        text = table.get(key, fallback)
+        if kwargs:
+            return text.format(**kwargs)
+        return text
+
+    def _load_language(self):
+        settings_path = CONFIG_DIR / SETTINGS_FILE
+        if settings_path.exists():
+            try:
+                with open(settings_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    value = (data.get("language") or "").strip().lower()
+                    if value in SUPPORTED_LANGUAGES:
+                        return value
+            except Exception:
+                pass
+        return "zh_cn"
+
+    def _is_cookie_placeholder(self, text):
+        value = (text or "").strip()
+        return value in {
+            "",
+            COOKIE_NOT_SET_SENTINEL,
+            I18N["zh_cn"]["cookie_not_set"],
+            I18N["en_us"]["cookie_not_set"],
+        }
+
+    def _normalize_cookie_display_text(self, raw_cookie_value):
+        if self._is_cookie_placeholder(raw_cookie_value):
+            return self.tr("cookie_not_set")
+        return raw_cookie_value
+
+    def _localize_queue_message(self, msg):
+        if self.language != "en_us":
+            return msg
+        text = (msg or "").strip()
+        if text == "链接为空":
+            return self.tr("queue_msg_empty_link")
+        if text.startswith("链接已存在: "):
+            return self.tr("queue_msg_exists", value=text[len("链接已存在: "):])
+        if text.startswith("已添加: "):
+            return self.tr("queue_msg_added", value=text[len("已添加: "):])
+        if text.startswith("已移除: "):
+            return self.tr("queue_msg_removed", value=text[len("已移除: "):])
+        if text == "无效的索引":
+            return self.tr("queue_msg_invalid_index")
+        if text == "保存路径已更新":
+            return self.tr("queue_msg_save_path_updated")
+        return msg
+
+    def _apply_language(self):
+        selected_display = self.language_display_var.get()
+        new_language = "zh_cn"
+        for code, label in LANGUAGE_DISPLAY.items():
+            if label == selected_display:
+                new_language = code
+                break
+
+        if new_language == self.language:
+            return
+
+        if self._is_cookie_placeholder(self.cookie_file_var.get()):
+            self.cookie_file_var.set(COOKIE_NOT_SET_SENTINEL)
+
+        self.language = new_language
+        self.cookie_file_var.set(self._normalize_cookie_display_text(self.cookie_file_var.get()))
+        self.progress_text.set(self.tr("waiting"))
+        self.list_progress_text.set(self.tr("waiting"))
+        self.current_url_var.set(self.tr("idle_download"))
+        self._save_settings()
+        self.root.title(self.tr("app_title"))
+        self.setup_ui(rebuild=True)
+        self.refresh_queue_display()
+        self.update_ui_state()
+        self.log_message(self.tr("language_switched", language=LANGUAGE_DISPLAY.get(self.language, self.language)))
+
+    def setup_ui(self, rebuild=False):
+        if rebuild and self.main_frame is not None:
+            self.main_frame.destroy()
+
         main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame = main_frame
         main_frame.grid(row=0, column=0, sticky="nsew")
 
         self.root.columnconfigure(0, weight=1)
@@ -165,20 +493,20 @@ class DownloadGUI:
         main_frame.columnconfigure(0, weight=1)
         main_frame.rowconfigure(3, weight=1)
 
-        info_frame = ttk.LabelFrame(main_frame, text="队列信息", padding="10")
+        info_frame = ttk.LabelFrame(main_frame, text=self.tr("queue_info"), padding="10")
         info_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         for c in range(4):
             info_frame.columnconfigure(c, weight=1)
 
-        ttk.Label(info_frame, text="队列中的链接数:").grid(row=0, column=0, sticky="w")
+        ttk.Label(info_frame, text=self.tr("queue_count")).grid(row=0, column=0, sticky="w")
         self.info_label = ttk.Label(info_frame, text="0", foreground="blue", font=("Arial", 12, "bold"))
         self.info_label.grid(row=0, column=1, sticky="w", padx=(6, 0))
 
-        ttk.Label(info_frame, text="下载状态:").grid(row=0, column=2, sticky="e")
-        self.status_label = ttk.Label(info_frame, text="就绪", foreground="green", font=("Arial", 12, "bold"))
+        ttk.Label(info_frame, text=self.tr("download_status")).grid(row=0, column=2, sticky="e")
+        self.status_label = ttk.Label(info_frame, text=self.tr("ready"), foreground="green", font=("Arial", 12, "bold"))
         self.status_label.grid(row=0, column=3, sticky="w", padx=(6, 0))
 
-        ttk.Label(info_frame, text="当前下载:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(info_frame, text=self.tr("current_download")).grid(row=1, column=0, sticky="w", pady=(6, 0))
         self.current_label = ttk.Label(info_frame, textvariable=self.current_url_var, foreground="black")
         self.current_label.grid(row=1, column=1, columnspan=3, sticky="w", pady=(6, 0))
 
@@ -187,44 +515,55 @@ class DownloadGUI:
         self.progress_label = ttk.Label(info_frame, textvariable=self.progress_text, foreground="gray")
         self.progress_label.grid(row=2, column=3, sticky="w", padx=(6, 0))
 
-        ttk.Label(info_frame, text="列表总进度:").grid(row=3, column=0, sticky="w", pady=(6, 0))
+        ttk.Label(info_frame, text=self.tr("list_progress")).grid(row=3, column=0, sticky="w", pady=(6, 0))
         self.list_progress_bar = ttk.Progressbar(info_frame, variable=self.list_progress_var, maximum=100)
         self.list_progress_bar.grid(row=3, column=1, columnspan=2, sticky="ew", pady=(6, 0))
         self.list_progress_label = ttk.Label(info_frame, textvariable=self.list_progress_text, foreground="gray")
         self.list_progress_label.grid(row=3, column=3, sticky="w", padx=(6, 0), pady=(6, 0))
 
-        input_frame = ttk.LabelFrame(main_frame, text="添加链接", padding="10")
+        input_frame = ttk.LabelFrame(main_frame, text=self.tr("add_link"), padding="10")
         input_frame.grid(row=1, column=0, sticky="ew", pady=(0, 10))
         input_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(input_frame, text="URL:").grid(row=0, column=0, sticky="w")
+        ttk.Label(input_frame, text=self.tr("url")).grid(row=0, column=0, sticky="w")
         self.url_entry = ttk.Entry(input_frame)
         self.url_entry.grid(row=0, column=1, sticky="ew", padx=(10, 10))
         self.url_entry.bind("<Return>", lambda e: self.add_url_from_entry())
 
         button_frame = ttk.Frame(input_frame)
         button_frame.grid(row=0, column=2, sticky="ew", padx=(5, 0))
-        ttk.Button(button_frame, text="添加", width=8, command=self.add_url_from_entry).pack(side="left", padx=2)
-        ttk.Button(button_frame, text="从剪贴板", width=10, command=self.add_from_clipboard).pack(side="left", padx=2)
+        ttk.Button(button_frame, text=self.tr("add"), width=8, command=self.add_url_from_entry).pack(side="left", padx=2)
+        ttk.Button(button_frame, text=self.tr("from_clipboard"), width=12, command=self.add_from_clipboard).pack(side="left", padx=2)
 
-        ttk.Label(input_frame, text="默认下载路径:").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(input_frame, text=self.tr("default_download_path")).grid(row=1, column=0, sticky="w", pady=(10, 0))
         self.default_path_entry = ttk.Entry(input_frame, textvariable=self.default_save_path_var)
         self.default_path_entry.grid(row=1, column=1, sticky="ew", padx=(10, 10), pady=(10, 0))
 
         default_path_btn_frame = ttk.Frame(input_frame)
         default_path_btn_frame.grid(row=1, column=2, sticky="ew", padx=(5, 0), pady=(10, 0))
-        ttk.Button(default_path_btn_frame, text="选择目录", width=10, command=self.choose_default_dir).pack(side="left", padx=2)
-        ttk.Button(default_path_btn_frame, text="保存默认", width=10, command=self.apply_default_save_path).pack(side="left", padx=2)
+        ttk.Button(default_path_btn_frame, text=self.tr("choose_dir"), width=12, command=self.choose_default_dir).pack(side="left", padx=2)
+        ttk.Button(default_path_btn_frame, text=self.tr("save_default"), width=12, command=self.apply_default_save_path).pack(side="left", padx=2)
 
-        ttk.Label(input_frame, text="Cookie文件:").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(input_frame, text=self.tr("cookie_file")).grid(row=2, column=0, sticky="w", pady=(10, 0))
         self.cookie_entry = ttk.Entry(input_frame, textvariable=self.cookie_file_var)
         self.cookie_entry.grid(row=2, column=1, sticky="ew", padx=(10, 10), pady=(10, 0))
 
         cookie_btn_frame = ttk.Frame(input_frame)
         cookie_btn_frame.grid(row=2, column=2, sticky="ew", padx=(5, 0), pady=(10, 0))
-        ttk.Button(cookie_btn_frame, text="选择Cookie", width=10, command=self.choose_cookie_file).pack(side="left", padx=2)
+        ttk.Button(cookie_btn_frame, text=self.tr("choose_cookie"), width=12, command=self.choose_cookie_file).pack(side="left", padx=2)
 
-        queue_frame = ttk.LabelFrame(main_frame, text="下载队列 (每条自带操作按钮)", padding="10")
+        ttk.Label(input_frame, text=self.tr("language")).grid(row=3, column=0, sticky="w", pady=(10, 0))
+        self.lang_combobox = ttk.Combobox(
+            input_frame,
+            textvariable=self.language_display_var,
+            values=[LANGUAGE_DISPLAY["zh_cn"], LANGUAGE_DISPLAY["en_us"]],
+            state="readonly",
+            width=20,
+        )
+        self.lang_combobox.grid(row=3, column=1, sticky="w", padx=(10, 10), pady=(10, 0))
+        ttk.Button(input_frame, text=self.tr("apply_language"), width=12, command=self._apply_language).grid(row=3, column=2, sticky="w", padx=(5, 0), pady=(10, 0))
+
+        queue_frame = ttk.LabelFrame(main_frame, text=self.tr("queue_list"), padding="10")
         queue_frame.grid(row=3, column=0, sticky="nsew", pady=(0, 10))
         queue_frame.columnconfigure(0, weight=1)
         queue_frame.rowconfigure(0, weight=1)
@@ -245,22 +584,22 @@ class DownloadGUI:
 
         self.queue_container.bind("<Configure>", _configure_container)
 
-        action_frame = ttk.LabelFrame(main_frame, text="操作", padding="10")
+        action_frame = ttk.LabelFrame(main_frame, text=self.tr("actions"), padding="10")
         action_frame.grid(row=4, column=0, sticky="ew", pady=(0, 10))
 
         btn_col = 0
-        ttk.Button(action_frame, text="刷新列表", command=self.refresh_queue_display).grid(row=0, column=btn_col, padx=5, pady=5)
+        ttk.Button(action_frame, text=self.tr("refresh"), command=self.refresh_queue_display).grid(row=0, column=btn_col, padx=5, pady=5)
         btn_col += 1
-        ttk.Button(action_frame, text="下载第一个", command=self.download_first, style="Accent.TButton").grid(row=0, column=btn_col, padx=5, pady=5)
+        ttk.Button(action_frame, text=self.tr("download_first"), command=self.download_first, style="Accent.TButton").grid(row=0, column=btn_col, padx=5, pady=5)
         btn_col += 1
-        ttk.Button(action_frame, text="下载全部", command=self.download_all, style="Accent.TButton").grid(row=0, column=btn_col, padx=5, pady=5)
+        ttk.Button(action_frame, text=self.tr("download_all"), command=self.download_all, style="Accent.TButton").grid(row=0, column=btn_col, padx=5, pady=5)
         btn_col += 1
-        self.stop_button = ttk.Button(action_frame, text="停止下载", command=self.stop_download, state="disabled")
+        self.stop_button = ttk.Button(action_frame, text=self.tr("stop_download"), command=self.stop_download, state="disabled")
         self.stop_button.grid(row=0, column=btn_col, padx=5, pady=5)
         btn_col += 1
-        ttk.Button(action_frame, text="清空队列", command=self.clear_queue).grid(row=0, column=btn_col, padx=5, pady=5)
+        ttk.Button(action_frame, text=self.tr("clear_queue"), command=self.clear_queue).grid(row=0, column=btn_col, padx=5, pady=5)
 
-        log_frame = ttk.LabelFrame(main_frame, text="日志", padding="10")
+        log_frame = ttk.LabelFrame(main_frame, text=self.tr("logs"), padding="10")
         log_frame.grid(row=5, column=0, sticky="nsew", pady=(0, 10))
         log_frame.columnconfigure(0, weight=1)
         log_frame.rowconfigure(0, weight=1)
@@ -285,9 +624,9 @@ class DownloadGUI:
         header.grid(row=0, column=0, sticky="ew", pady=(0, 6))
         header.columnconfigure(1, weight=1)
         ttk.Label(header, text="#", width=4).grid(row=0, column=0, sticky="w")
-        ttk.Label(header, text="链接", width=70).grid(row=0, column=1, sticky="w")
-        ttk.Label(header, text="保存路径", width=30).grid(row=0, column=2, sticky="w")
-        ttk.Label(header, text="操作", width=10).grid(row=0, column=3, sticky="w")
+        ttk.Label(header, text=self.tr("link"), width=70).grid(row=0, column=1, sticky="w")
+        ttk.Label(header, text=self.tr("save_path"), width=30).grid(row=0, column=2, sticky="w")
+        ttk.Label(header, text=self.tr("action"), width=10).grid(row=0, column=3, sticky="w")
 
         for i, item in enumerate(self.queue.queue, 1):
             row = ttk.Frame(self.queue_container, padding=(0, 2))
@@ -296,41 +635,43 @@ class DownloadGUI:
 
             ttk.Label(row, text=f"{i}", width=4).grid(row=0, column=0, sticky="w")
             ttk.Label(row, text=item.get("url"), width=70, wraplength=600, anchor="w").grid(row=0, column=1, sticky="w")
-            default_path_text = self.default_save_path_var.get().strip() or save_path_default
-            path_text = item.get("save_path") or f"默认: {self._short_path(default_path_text)}"
+            default_path_text = self.default_save_path_var.get().strip() or get_system_downloads_path()
+            path_text = item.get("save_path") or f"{self.tr('default_prefix')}: {self._short_path(default_path_text)}"
             ttk.Label(row, text=path_text, width=30, anchor="w", foreground="gray").grid(row=0, column=2, sticky="w")
-            ttk.Button(row, text="操作", command=lambda idx=i-1: self.open_item_actions(idx)).grid(row=0, column=3, padx=4)
+            ttk.Button(row, text=self.tr("action"), command=lambda idx=i-1: self.open_item_actions(idx)).grid(row=0, column=3, padx=4)
 
         self.info_label.config(text=str(self.queue.size()))
-        self.log_message(f"✓ 队列已刷新，共 {self.queue.size()} 个链接")
+        self.log_message(self.tr("queue_refreshed", count=self.queue.size()))
 
     def add_url_from_entry(self):
         url = self.url_entry.get().strip()
         if url:
             success, msg = self.queue.add_link(url)
-            self.log_message(msg)
+            display_msg = self._localize_queue_message(msg)
+            self.log_message(display_msg)
             if success:
                 self.url_entry.delete(0, tk.END)
                 self.refresh_queue_display()
             else:
-                messagebox.showwarning("警告", msg)
+                messagebox.showwarning(self.tr("warn"), display_msg)
         else:
-            messagebox.showwarning("警告", "请输入链接")
+            messagebox.showwarning(self.tr("warn"), self.tr("input_url_required"))
 
     def add_from_clipboard(self):
         try:
             url = str(cb.paste()).strip()
             if url:
                 success, msg = self.queue.add_link(url)
-                self.log_message(msg)
+                display_msg = self._localize_queue_message(msg)
+                self.log_message(display_msg)
                 if success:
                     self.refresh_queue_display()
                 else:
-                    messagebox.showinfo("提示", msg)
+                    messagebox.showinfo(self.tr("info"), display_msg)
             else:
-                messagebox.showwarning("警告", "剪贴板为空")
+                messagebox.showwarning(self.tr("warn"), self.tr("clipboard_empty"))
         except Exception as e:
-            messagebox.showerror("错误", f"无法读取剪贴板: {e}")
+            messagebox.showerror(self.tr("error"), self.tr("cannot_read_clipboard", error=e))
 
     def open_item_actions(self, index):
         item = self.queue.get_link(index)
@@ -338,25 +679,25 @@ class DownloadGUI:
             return
 
         win = tk.Toplevel(self.root)
-        win.title("管理队列项")
+        win.title(self.tr("manage_queue_item"))
         win.geometry("620x240")
         win.transient(self.root)
         win.grab_set()
 
-        ttk.Label(win, text="链接:").pack(anchor="w", padx=10, pady=(10, 2))
+        ttk.Label(win, text=self.tr("link_label")).pack(anchor="w", padx=10, pady=(10, 2))
         ttk.Label(win, text=item.get("url"), wraplength=580, foreground="blue").pack(anchor="w", padx=10)
 
-        ttk.Label(win, text="保存路径 (留空使用默认)").pack(anchor="w", padx=10, pady=(12, 2))
+        ttk.Label(win, text=self.tr("save_path_hint")).pack(anchor="w", padx=10, pady=(12, 2))
         path_var = tk.StringVar(value=item.get("save_path") or "")
         path_entry = ttk.Entry(win, textvariable=path_var, width=80)
         path_entry.pack(anchor="w", padx=10, fill="x")
 
         def choose_dir():
-            directory = filedialog.askdirectory(title="选择保存位置")
+            directory = filedialog.askdirectory(title=self.tr("choose_save_location"))
             if directory:
                 path_var.set(directory)
 
-        ttk.Button(win, text="选择目录", command=choose_dir).pack(anchor="w", padx=10, pady=6)
+        ttk.Button(win, text=self.tr("choose_dir"), command=choose_dir).pack(anchor="w", padx=10, pady=6)
 
         btn_frame = ttk.Frame(win)
         btn_frame.pack(fill="x", pady=10, padx=10)
@@ -365,42 +706,47 @@ class DownloadGUI:
             new_path = path_var.get().strip() or None
             ok, msg = self.queue.update_save_path(index, new_path)
             if ok:
-                self.log_message(f"✓ 已更新保存路径: {new_path or '默认路径'}")
+                self.log_message(self.tr("update_save_path_ok", path=(new_path or self.tr("default_path_label"))))
                 self.refresh_queue_display()
                 win.destroy()
             else:
-                messagebox.showerror("错误", msg)
+                messagebox.showerror(self.tr("error"), self._localize_queue_message(msg))
 
         def delete_item():
-            if messagebox.askyesno("确认", "确定要删除该链接吗？"):
+            if messagebox.askyesno(self.tr("confirm"), self.tr("confirm_delete_link")):
                 ok, msg = self.queue.remove_link(index)
-                self.log_message(msg)
+                self.log_message(self._localize_queue_message(msg))
                 self.refresh_queue_display()
                 win.destroy()
 
-        ttk.Button(btn_frame, text="保存", style="Accent.TButton", command=save_changes).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="删除该链接", command=delete_item).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="关闭", command=win.destroy).pack(side="right", padx=4)
+        ttk.Button(btn_frame, text=self.tr("save"), style="Accent.TButton", command=save_changes).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text=self.tr("delete_link"), command=delete_item).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text=self.tr("close"), command=win.destroy).pack(side="right", padx=4)
 
     def clear_queue(self):
-        if messagebox.askyesno("确认", "确定要清空整个队列吗？"):
+        if messagebox.askyesno(self.tr("confirm"), self.tr("confirm_clear_queue")):
             self.queue.queue = []
             self.queue.save_queue()
-            self.log_message("✓ 队列已清空")
+            self.log_message(self.tr("queue_cleared"))
             self.refresh_queue_display()
 
     def _load_default_save_path(self):
         settings_path = CONFIG_DIR / SETTINGS_FILE
+        system_downloads = get_system_downloads_path()
+        legacy_downloads = str(Path.home() / "Downloads")
         if settings_path.exists():
             try:
                 with open(settings_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     path = (data.get("default_save_path") or "").strip()
                     if path:
+                        # 兼容历史配置：如果保存的是旧的 Home/Downloads 且已失效，自动切换到系统真实 Downloads。
+                        if path == legacy_downloads and path != system_downloads and not os.path.exists(path):
+                            return system_downloads
                         return path
             except Exception as e:
                 print(f"加载设置失败: {e}")
-        return save_path_default
+        return system_downloads
 
     def _load_cookie_file(self):
         settings_path = CONFIG_DIR / SETTINGS_FILE
@@ -425,12 +771,12 @@ class DownloadGUI:
             if candidate.exists():
                 return str(candidate)
 
-        return str(CONFIG_DIR / DEFAULT_COOKIE_FILE)
+        return COOKIE_NOT_SET_SENTINEL
 
     def _save_settings(self):
         settings_path = CONFIG_DIR / SETTINGS_FILE
         cookie_text = (self.cookie_file_var.get() or "").strip()
-        if not cookie_text:
+        if self._is_cookie_placeholder(cookie_text):
             cookie_value = DEFAULT_COOKIE_FILE
         else:
             cookie_path = Path(cookie_text)
@@ -439,8 +785,9 @@ class DownloadGUI:
             else:
                 cookie_value = str(cookie_path)
         payload = {
-            "default_save_path": self.default_save_path_var.get().strip() or save_path_default,
+            "default_save_path": self.default_save_path_var.get().strip() or get_system_downloads_path(),
             "cookie_file": cookie_value,
+            "language": self.language,
             "last_updated": datetime.now().isoformat(),
         }
         with open(settings_path, "w", encoding="utf-8") as f:
@@ -448,7 +795,7 @@ class DownloadGUI:
 
     def choose_cookie_file(self):
         file_path = filedialog.askopenfilename(
-            title="选择Cookie文件",
+            title=self.tr("choose_cookie_title"),
             filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")],
         )
         if not file_path:
@@ -459,50 +806,50 @@ class DownloadGUI:
         try:
             if src.resolve() != dst.resolve():
                 shutil.copy2(src, dst)
-                self.log_message(f"✓ Cookie已复制到配置目录: {dst}")
+                self.log_message(self.tr("cookie_copied", path=dst))
             else:
-                self.log_message(f"✓ 使用配置目录中的Cookie: {dst}")
+                self.log_message(self.tr("cookie_using_existing", path=dst))
             self.cookie_file_var.set(str(dst))
             self._save_settings()
         except Exception as e:
-            messagebox.showerror("错误", f"无法设置Cookie文件: {e}")
+            messagebox.showerror(self.tr("error"), self.tr("cannot_set_cookie", error=e))
 
     def choose_default_dir(self):
-        directory = filedialog.askdirectory(title="选择默认下载目录")
+        directory = filedialog.askdirectory(title=self.tr("choose_default_download_dir"))
         if directory:
             self.default_save_path_var.set(directory)
             try:
                 os.makedirs(directory, exist_ok=True)
                 self._save_settings()
-                self.log_message(f"✓ 默认下载路径已更新: {directory}")
+                self.log_message(self.tr("default_download_path_updated", path=directory))
             except Exception as e:
-                messagebox.showerror("错误", f"无法保存默认路径: {e}")
+                messagebox.showerror(self.tr("error"), self.tr("cannot_save_default_path", error=e))
 
     def apply_default_save_path(self):
         new_path = self.default_save_path_var.get().strip()
         if not new_path:
-            messagebox.showwarning("警告", "默认下载路径不能为空")
+            messagebox.showwarning(self.tr("warn"), self.tr("default_download_path_empty"))
             return
         try:
             os.makedirs(new_path, exist_ok=True)
             self._save_settings()
-            self.log_message(f"✓ 默认下载路径已更新: {new_path}")
+            self.log_message(self.tr("default_download_path_updated", path=new_path))
         except Exception as e:
-            messagebox.showerror("错误", f"无法设置默认路径: {e}")
+            messagebox.showerror(self.tr("error"), self.tr("cannot_set_default_path", error=e))
 
     def _stream_download(self, url, save_path, progress_callback, debug_mode=False):
         ensure_yt_dlp_updated()
         cmd = ["yt-dlp", "--newline", "-4", url]
 
         cookie_text = (self.cookie_file_var.get() or "").strip()
-        if cookie_text:
+        if not self._is_cookie_placeholder(cookie_text):
             cookie_path = Path(cookie_text)
             if cookie_path.exists():
                 cmd.extend(["--cookies", str(cookie_path)])
             else:
-                progress_callback(f"⚠ Cookie文件不存在，跳过cookies参数: {cookie_path}")
+                progress_callback(self.tr("cookie_missing_skip", path=cookie_path))
         else:
-            progress_callback("⚠ 未设置Cookie文件，跳过cookies参数")
+            progress_callback(self.tr("cookie_not_set_skip"))
 
         cmd.extend(["-P", save_path, "--js-runtimes", "node"])
         if debug_mode:
@@ -513,7 +860,7 @@ class DownloadGUI:
         try:
             proc = subprocess.Popen(cmd, cwd=SCRIPT_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
         except FileNotFoundError:
-            progress_callback("❌ 未找到 yt-dlp，请确认已安装")
+            progress_callback(self.tr("yt_dlp_not_found"))
             return False
 
         self.current_process = proc
@@ -530,8 +877,8 @@ class DownloadGUI:
 
         def _prompt():
             answer["retry"] = messagebox.askyesno(
-                "下载失败",
-                "下载失败，是否进行一次 debugging 下载？\n将自动添加 -v 以输出详细错误信息。",
+                self.tr("download_failed_title"),
+                self.tr("download_failed_debug_retry"),
             )
             done.set()
 
@@ -561,7 +908,7 @@ class DownloadGUI:
 
     def _download_item(self, item):
         url = item.get("url")
-        save_to = item.get("save_path") or self.default_save_path_var.get().strip() or save_path_default
+        save_to = item.get("save_path") or self.default_save_path_var.get().strip() or get_system_downloads_path()
         # 下载前自动持久化当前默认路径，保证下次启动沿用最新值
         if not item.get("save_path"):
             try:
@@ -572,31 +919,31 @@ class DownloadGUI:
         self._playlist_detected = False
         self.root.after(0, self.current_url_var.set, f"{url}")
         self.root.after(0, self.progress_var.set, 0)
-        self.root.after(0, self.progress_text.set, "准备中")
+        self.root.after(0, self.progress_text.set, self.tr("preparing"))
         self.root.after(0, self.list_progress_var.set, 0)
-        self.root.after(0, self.list_progress_text.set, "识别中")
+        self.root.after(0, self.list_progress_text.set, self.tr("detecting"))
         success = self._stream_download(url, save_to, self._progress_handler)
         if (not success) and self.is_downloading:
-            self.log_message("❌ 下载失败")
+            self.log_message(self.tr("download_failed"))
             if self._ask_debug_retry():
-                self.log_message("▶ 开始 debugging 下载（-v）")
-                self.root.after(0, self.progress_text.set, "调试重试中")
+                self.log_message(self.tr("debug_retry_start"))
+                self.root.after(0, self.progress_text.set, self.tr("debug_retrying"))
                 success = self._stream_download(url, save_to, self._progress_handler, debug_mode=True)
         if not self._playlist_detected:
             if success:
                 self.root.after(0, self.list_progress_var.set, 100)
                 self.root.after(0, self.list_progress_text.set, "1/1")
             else:
-                self.root.after(0, self.list_progress_text.set, "失败")
+                self.root.after(0, self.list_progress_text.set, self.tr("failed"))
         return success
 
     def download_first(self):
         if self.is_downloading:
-            messagebox.showwarning("警告", "正在下载中，请稍候")
+            messagebox.showwarning(self.tr("warn"), self.tr("busy_downloading"))
             return
         item = self.queue.get_first_link()
         if not item:
-            messagebox.showwarning("警告", "队列为空，没有链接可下载")
+            messagebox.showwarning(self.tr("warn"), self.tr("queue_empty_no_download"))
             return
         thread = threading.Thread(target=self._download_first_worker, daemon=True)
         thread.start()
@@ -609,21 +956,21 @@ class DownloadGUI:
         success = self._download_item(item)
         if success:
             self.queue.remove_link(0)
-            self.log_message("✓ 下载完成，已从队列中移除")
+            self.log_message(self.tr("download_complete_removed"))
         else:
-            self.log_message("❌ 下载失败，链接保留在队列中")
+            self.log_message(self.tr("download_failed_keep"))
         self.is_downloading = False
         self.refresh_queue_display()
         self.update_ui_state()
 
     def download_all(self):
         if self.is_downloading:
-            messagebox.showwarning("警告", "正在下载中，请稍候")
+            messagebox.showwarning(self.tr("warn"), self.tr("busy_downloading"))
             return
         if self.queue.is_empty():
-            messagebox.showwarning("警告", "队列为空，没有链接可下载")
+            messagebox.showwarning(self.tr("warn"), self.tr("queue_empty_no_download"))
             return
-        if messagebox.askyesno("确认", f"确定要下载队列中的全部 {self.queue.size()} 个链接吗？"):
+        if messagebox.askyesno(self.tr("confirm"), self.tr("confirm_download_all", count=self.queue.size())):
             thread = threading.Thread(target=self._download_all_worker, daemon=True)
             thread.start()
             self.current_download_thread = thread
@@ -640,27 +987,27 @@ class DownloadGUI:
             success = self._download_item(item)
             if success:
                 self.queue.remove_link(0)
-                self.log_message("✓ 下载完成，已从队列中移除")
+                self.log_message(self.tr("download_complete_removed"))
             else:
-                self.log_message("❌ 下载失败，已停止队列下载")
+                self.log_message(self.tr("download_failed_stop_queue"))
                 break
             self.refresh_queue_display()
         self.is_downloading = False
         if self.queue.is_empty():
-            self.log_message("\n✓ 所有链接下载完毕！")
+            self.log_message(self.tr("all_downloads_done"))
         self.update_ui_state()
 
     def stop_download(self):
         if not self.is_downloading:
             return
-        if messagebox.askyesno("确认", "确定要停止下载吗？"):
+        if messagebox.askyesno(self.tr("confirm"), self.tr("confirm_stop_download")):
             self.is_downloading = False
             if self.current_process:
                 try:
                     self.current_process.terminate()
                 except Exception:
                     pass
-            self.log_message("\n⚠ 下载已停止")
+            self.log_message(self.tr("download_stopped"))
             self.update_ui_state()
 
     def update_ui_state(self):
@@ -668,14 +1015,14 @@ class DownloadGUI:
 
     def _update_ui_state(self):
         if self.is_downloading:
-            self.status_label.config(text="下载中...", foreground="orange")
+            self.status_label.config(text=self.tr("downloading"), foreground="orange")
             self.stop_button.config(state="normal")
         else:
-            self.status_label.config(text="就绪", foreground="green")
+            self.status_label.config(text=self.tr("ready"), foreground="green")
             self.stop_button.config(state="disabled")
-            self.current_url_var.set("当前无下载")
+            self.current_url_var.set(self.tr("idle_download"))
             if self.progress_var.get() >= 100:
-                self.progress_text.set("完成")
+                self.progress_text.set(self.tr("done"))
 
     def log_message(self, msg):
         self.root.after(0, self._log_message, msg)
@@ -688,7 +1035,7 @@ class DownloadGUI:
 
     def on_close(self):
         # 程序退出前保存默认路径，避免未点击“保存默认”导致配置丢失
-        current_path = self.default_save_path_var.get().strip() or save_path_default
+        current_path = self.default_save_path_var.get().strip() or get_system_downloads_path()
         try:
             os.makedirs(current_path, exist_ok=True)
             self._save_settings()
